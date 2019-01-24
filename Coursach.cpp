@@ -4,8 +4,11 @@
 #include <pybind11/iostream.h>
 #include <pybind11/eval.h>
 #include <pybind11/embed.h>
+#include <pybind11/numpy.h>
 #include <string>
 #include <direct.h>
+
+
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -23,26 +26,27 @@ class generator {
  public:
   generator(std::string json_path, std::string weights_path,
             bool abs_path_json = false, bool abs_path_weights = false) {
-    // abs_path_weigths Рё abs_path_json РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ true, 
-    //РµСЃР»Рё РїРµСЂРµРґР°РЅ Р°Р±СЃРѕР»СЋС‚РЅС‹Р№ РїСѓС‚СЊ СЃРѕРѕС‚РІРµС‚СЃРІСѓСЋС‰РёС… С„Р°Р№Р»РѕРІ
+    // abs_path_weigths и abs_path_json должны быть true, 
+    //если передан абсолютный путь соответсвующих файлов
     py::object json;
-    if (abs_path_json) { //С‡С‚РµРЅРёРµ json С„Р°Р№Р»Р° РїСЂРёРІР°С‚РЅС‹Рј РјРµС‚РѕРґРѕРј
+    if (abs_path_json) { //чтение json файла приватным методом
       json = open(json_path);
     } else {
       json = open(default_path + json_path);
     }
-    model = model_from_json(json.attr("read")().cast<std::string>()); //Р·Р°РіСЂСѓР·РєР° РјРѕРґРµР»Рё СЃ json
-    if (abs_path_weights) {        //Р·Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ РІ РјРѕРґРµР»СЊ
+    model = model_from_json(json.attr("read")().cast<std::string>()); //загрузка модели с json
+    if (abs_path_weights) {        //загрузка весов в модель
       model.attr("load_weights")(weights_path);
     } else {
       model.attr("load_weights")(default_path + weights_path);
     }    
   }
-  void make_pics(int pic_num = 1) { //pic_num РєРѕР»РёС‡РµСЃС‚РІРѕ РєР°СЂС‚РёРЅРѕРє РґР»СЏ Р·Р°РїРёСЃРё
-    py::object dims = util.attr("mkarr")(pic_num, 100);    //СЃРѕР·РґР°РЅРёРµ РјРЅРѕР¶РµСЃС‚РІР° СЃ СѓРєР°Р·Р°РЅРёРµРј СЂР°Р·РјРµСЂРЅРѕСЃС‚РµР№
-    py::object z = np_random.attr("normal")(0, 1, dims);  //СЃР»СѓС‡Р°Р№РЅС‹Рµ С‡РёСЃР»Р° РґР»СЏ РІС…РѕРґР° РІ РјРѕРґРµР»СЊ
-    py::object pics_arr = model.attr("predict")(z);    //РїРѕР»СѓС‡РµРЅРёРµ РєР°СЂС‚РёРЅРѕРє РІ np.array
-    util.attr("save")(pics_arr, default_path);        //СЃРѕС…СЂР°РЅРµРЅРёРµ РєР°СЂС‚РёРЅРѕРє
+  py::array_t<double> make_pics(int pic_num = 1) { //pic_num количество картинок для записи
+    py::object dims = util.attr("mkarr")(pic_num, 100);    //создание множества с указанием размерностей
+    py::object z = np_random.attr("normal")(0, 1, dims);  //случайные числа для входа в модель
+    py::array_t<double> pics_arr = model.attr("predict")(z);    //получение картинок в np.array
+    util.attr("save")(pics_arr, default_path);        //сохранение картинок
+    return pics_arr;
   }
 
  private:
@@ -62,23 +66,24 @@ class generator {
 
 class rcnn {
 public:
-  rcnn() {
+  rcnn(std::string weights_path) {
     py::object sys_path = py::module::import("sys").attr("path");
     sys_path.attr("append")(root_dir);
-    sys_path.attr("append")(root_dir + "\\samples\\coco\\"); //РґРѕР±Р°РІР»СЏРµРј РїСѓС‚Рё РґР»СЏ РёРјРїРѕСЂС‚Р° Р±РёР±Р»РёРѕС‚РµРє
+    sys_path.attr("append")(root_dir + "\\samples\\coco\\"); //добавляем пути для импорта библиотек
     py::object coco = py::module::import("coco");
     py::object model = modellib.attr("MaskRCNN")("mode"_a = "inference", "model_dir"_a = model_dir, 
-	      "config"_a = coco.attr("CocoConfig")());   //СЃРѕР·РґР°РЅРёРµ РјРѕРґРµР»Рё
-    model.attr("load_weights")(coco_model_path, "by_name"_a = true);  //Р·Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ
+	      "config"_a = coco.attr("CocoConfig")());   //создание модели
+    model.attr("load_weights")(weights_path, "by_name"_a = true);  //загрузка весов
 	}
-  void detect() {
-  py::object imread = py::module::import("skimage.io").attr("imread");  
-  py::object img = imread(image_path);             //Р·Р°РіСЂСѓР·РєР° РёР·РѕР±СЂР°Р¶РµРЅРёСЏ
-	py::list list_img;
-	list_img.append(img);
-  py::object results = model.attr("detect")("images"_a = list_img, "verbose"_a = 1);
-  std::cout << "Detected !" << std::endl;
-  util.attr("save_detected")(results, root_dir + "\\detected.png");
+  py::array_t<double> detect() {
+    py::object imread = py::module::import("skimage.io").attr("imread");  
+    py::object img = imread(image_path);             //загрузка изображения
+	  py::list list_img;
+	  list_img.append(img);
+    py::array_t<double> results = model.attr("detect")("images"_a = list_img, "verbose"_a = 1);
+    std::cout << "Detected !" << std::endl;
+    util.attr("save_detected")(results, root_dir + "\\detected.png");
+    return results;
 	}
 private:
 	py::object model;
@@ -94,13 +99,13 @@ class linreg {
 public:
   linreg(int k, int b) {
     py::object SimpleNetwork = py::module::import("SimpleNetwork").attr("SimpleNetwork");
-    model = SimpleNetwork(k,b);         //СЃРѕР·РґР°РЅРёРµ РјРѕРґРµР»Рё СЃ СЂРµР°Р»СЊРЅС‹РјРё Р·РЅР°С‡РµРЅРёСЏРјРё k Рё b
+    model = SimpleNetwork(k,b);         //создание модели с реальными значениями k и b
   }
   void train(int num_steps) {
     model.attr("train")(num_steps);    
   }
   void MakeGif(std::string gif_path) {
-    model.attr("MakeGif")(gif_path);      //СЃРѕР·РґР°РµС‚ РіРёС„РєСѓ РІ СЃ РґР°РЅРЅС‹Рј РёРјРµРЅРµРј
+    model.attr("MakeGif")(gif_path);      //создает гифку в с данным именем
   }
 private:
   py::object model;
@@ -109,11 +114,15 @@ private:
 class srgan {
 public:
   srgan() {}
-  void upscale() {
+  py::array_t<double> upscale(std::string weights_path) {
     py::object sys_path = py::module::import("sys").attr("path");
     sys_path.attr("append")(root_dir);
     py::object main = py::module::import("main");
-    main.attr("evaluate")(root_dir);                //РјРµС‚РѕРґ Р·Р°РіСЂСѓР¶Р°РµС‚ РјРѕРґРµР»СЊ, РІРµСЃР°, СѓРІРµР»РёС‡РёРІР°РµС‚ РєР°СЂС‚РёРЅРєСѓ Рё СЃРѕС…СЂР°РЅСЏРµС‚
+    py::array_t<double> result = main.attr("evaluate")(root_dir, weights_path);
+    //метод загружает модель, веса, увеличивает картинку и сохраняет
+
+    return result;
+
   }
 private:
   std::string root_dir = GetCurrentWorkingDir() + "\\srgan-master";
@@ -122,11 +131,12 @@ private:
 class yolo {
 public:
   yolo() {}
-  void detect() {
+  py::array_t<double> detect() {
     py::object sys_path = py::module::import("sys").attr("path");
     sys_path.attr("append")(root_dir);
     py::object YoloDetect = py::module::import("YoloDetect");
-    YoloDetect.attr("main")(root_dir);                   //Р·Р°РіСЂСѓР·РєР° РјРѕРґРµР»Рё Рё РІРµСЃРѕРІ, СЃРѕС…СЂР°РЅРµРЅРёРµ РєР°СЂС‚РёРєРЅРё СЃ СЂР°РјРєР°РјРё
+    py::array_t<double> img_arr = YoloDetect.attr("main")(root_dir);                   //загрузка модели и весов, сохранение картикни с рамками
+    return img_arr;
   }
 private:
   std::string root_dir = GetCurrentWorkingDir() + "\\yolo";
@@ -134,17 +144,17 @@ private:
 
 int main() {
 
-  //РЈРєР°Р·Р°С‚СЊ РїСѓС‚СЊ РґРѕ РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІР° Python
+  //Указать путь до виртуального пространства Python
   Py_SetPythonHome(L"D:/programming/Anaconda1/envs/Coursach");
 
   py::scoped_interpreter python;
   py::object sys_path = py::module::import("sys").attr("path");
   sys_path.attr("append")(GetCurrentWorkingDir() + "\\");
 
-  //РїСЂРёРјРµСЂС‹ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ РєР»Р°СЃСЃРѕРІ:
-
+  //примеры использования классов:
+  
   //generator gen("23.12 gen_model.json", "12.12 830_epoch gen_weights.h5");
-  //gen.make_pics(4);
+  //result = gen.make_pics(4);
 
   //rcnn detector;
   //detector.detect();
@@ -154,9 +164,10 @@ int main() {
   //model.MakeGif((GetCurrentWorkingDir() + "\\lin_reg.gif"));
 
   //srgan supres;
-  //supres.upscale();
+  //result = supres.upscale();
 
   //yolo detector;
+  //detector.detect();
 
   std::cout << GetCurrentWorkingDir() << std::endl;
   return 0;
