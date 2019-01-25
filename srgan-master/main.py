@@ -237,7 +237,7 @@ def train():
             tl.files.save_npz(net_d.all_params, name=checkpoint_dir + '/d_{}.npz'.format(tl.global_flag['mode']), sess=sess)
 
 
-def evaluate(path):
+def evaluate(path, weights_path):
     ## create folders to save result images
     save_dir = path + "\\samples\\evaluate"
     tl.files.exists_or_mkdir(save_dir)
@@ -278,12 +278,13 @@ def evaluate(path):
     ###========================== RESTORE G =============================###
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False))
     tl.layers.initialize_global_variables(sess)
-    tl.files.load_and_assign_npz(sess=sess, name=checkpoint_dir + '\\g_srgan.npz', network=net_g)
+    tl.files.load_and_assign_npz(sess=sess, name=weights_path, network=net_g)
 		
     ###======================= EVALUATION =============================###
     print("Images count is", len(valid_lr_img_list))
 		
     start_time = time.time()
+    result = np.array([])
     for img in valid_lr_img_list:
         valid_lr_img = get_imgs_fn(img, path + '\\data\\lr\\')
         valid_lr_img = (valid_lr_img / 127.5) - 1
@@ -294,7 +295,8 @@ def evaluate(path):
         print("LR size: %s /  generated HR size: %s" % (size, out.shape))  # LR size: (339, 510, 3) /  gen HR size: (1, 1356, 2040, 3)
         print("[*] save images")
         tl.vis.save_image(out[0], save_dir + '\\' + img + '_sr.png')
-
+        np.append(result, np.array([out]))
+    return result
 '''
 if __name__ == '__main__':
     import argparse
