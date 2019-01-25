@@ -184,6 +184,8 @@ class Detector(object):
         new_path = '\\'.join(imname.split("\\")[:-2]) + "\\detected\\" + imgname
         print(new_path)
         cv2.imwrite(new_path, image)
+        
+        return(image)
         #cv2.imshow('Image', image)
         #cv2.waitKey(wait)
 
@@ -212,9 +214,12 @@ def main(root_dir):
     # detect from image file
     globbed = glob(root_dir + "\\test\\*")
     #imname = globbed[np.random.choice(len(globbed), 1)[0]]
+    img_arr = np.array([])
+    #print(type(1))
     for img in globbed:
-      detector.image_detector(img)
-
+      np.append(img_arr, np.array([detector.image_detector(img)]))
+    #print(type(img_array))
+    return img_arr
 
 if __name__ == '__main__':
     main()
